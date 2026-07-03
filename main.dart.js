@@ -50040,8 +50040,8 @@ s=J.c(s==null?p:J.v(s,"is_approver"),!0)}else s=o}else s=o
 o=s}}if(o)return q.fr
 s=q.CW
 s=s==null?p:J.v(s,"department")
-r=B.c.aV(A.e(s==null?"":s))
-if(r.length===0)return q.fr
+r=B.c.aV(A.e(s==null?"":s)).toLowerCase()
+if(r.length===0)return[]
 s=J.fn(q.fr,new A.awX(r))
 s=A.Y(s,s.$ti.i("p.E"))
 return s},
@@ -50735,7 +50735,7 @@ case 2:return A.E(o.at(-1),r)}})
 return A.G($async$Cs,r)}}
 A.awX.prototype={
 $1(a){var s=J.v(a,"requester_department")
-return B.c.aV(A.e(s==null?"":s))===this.a},
+return B.c.aV(A.e(s==null?"":s)).toLowerCase()===this.a},
 $S:7}
 A.avW.prototype={
 $1(a){return!B.b.n(B.uD,a)},
