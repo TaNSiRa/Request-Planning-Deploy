@@ -54884,16 +54884,14 @@ i=n.z
 h=t.N
 g=t.z
 f=A.a88(A.a8(["currentPassword",j.a.a,"newPassword",i.a.a],h,g))
-e=i.a.a.length
-if(e!==0&&e<10)f.m(0,"newPassword","At least 10 characters")
-l=A.nn(n.Q,h,h)
-l.f5(l,new A.aJh())
-n.F(new A.aJi(n,l,f))
+e=A.nn(n.Q,h,h)
+e.f5(e,new A.aJh())
+n.F(new A.aJi(n,e,f))
 if(f.a!==0){s=1
-break}e=n.c
-e.toString
+break}l=n.c
+l.toString
 s=3
-return A.u(A.f1(e,"Change password","Change your password now?","Confirm",!1,B.bN),$async$x4)
+return A.u(A.f1(l,"Change password","Change your password now?","Confirm",!1,B.bN),$async$x4)
 case 3:if(!b){s=1
 break}p=5
 s=8
@@ -57623,7 +57621,7 @@ return A.u(A.a7U(a,"Reset password","New password","Reset",B.uz,!0),$async$qP)
 case 3:k=d
 if(k==null){s=1
 break}if(a.e==null){s=1
-break}if(B.c.aJ(k).length===0||k.length<10){A.bY(a,"New password is required and must be at least 10 characters",B.a8)
+break}if(B.c.aJ(k).length===0){A.bY(a,"New password is required",B.a8)
 s=1
 break}s=4
 return A.u(A.f1(a,"Reset password","Reset this user's password?","Confirm",!1,B.bN),$async$qP)
@@ -57929,9 +57927,6 @@ a3=B.c.aJ(j.a.a)
 if(a3.length!==0){f=A.cX("^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$",!1)
 a3=!f.b.test(a3)}else a3=!1
 if(a3)e.m(0,"email","Invalid email")
-if(h){a3=n.r.a.a.length
-a3=a3!==0&&a3<10}else a3=!1
-if(a3)e.m(0,"password","At least 10 characters")
 n.w.$1(new A.aP9(g,e))
 if(e.a!==0){s=1
 break}a3=n.x
