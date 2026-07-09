@@ -10,6 +10,25 @@
   <title>Automation Request</title>
   <link rel="manifest" href="manifest.json">
   <link rel="icon" type="image/png" href="favicon.png">
+  <script>
+    // Flutter 3.44 CanvasKit prints a benign
+    //   "LateInitializationError: Field '_handledContextLostEvent' has not been initialized."
+    // to the console on every hot restart: the previous run's WebGL
+    // context-lost listener fires before the new surface is ready. It is an
+    // engine-internal field with no runtime or UI effect and no app-level fix.
+    // Swallow just that one line so it stops cluttering the debug console;
+    // every other console.error passes through untouched.
+    (function () {
+      var origError = console.error.bind(console);
+      console.error = function () {
+        for (var i = 0; i < arguments.length; i++) {
+          var arg = arguments[i];
+          if (arg && ("" + arg).indexOf("_handledContextLostEvent") !== -1) return;
+        }
+        return origError.apply(null, arguments);
+      };
+    })();
+  </script>
 </head>
 <body>
   <script src="auth_config.js"></script>
