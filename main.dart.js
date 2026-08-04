@@ -71588,7 +71588,7 @@ q.a_a(s,a.gff(a))}q.UG(a)},
 azZ(a){var s
 if(a.gcs(a)!==B.cQ)return!1
 s=a.ghS()
-return Math.abs(s.b)>=24||Math.abs(s.a)>=24},
+return Math.abs(s.b)>=12||Math.abs(s.a)>=12},
 a0U(){var s=this
 if(s.a4)return
 s.a4=!0
@@ -71606,7 +71606,7 @@ p.a4=!1
 s=p.E.a
 r=s===0?0.016666666666666666:B.e.aR((a.a-s)/1e6,0.004166666666666667,0.06666666666666667)
 p.E=a
-q=p.af.aj(0,1-Math.exp(-r/0.08))
+q=p.af.aj(0,1-Math.exp(-r/0.13))
 if(p.af.a_(0,q).gcv()<=0.5)q=p.af
 p.af=p.af.a_(0,q)
 p.a_a(q,a)
