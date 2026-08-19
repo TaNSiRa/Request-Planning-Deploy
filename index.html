@@ -1,56 +1,32 @@
 <!DOCTYPE html>
 <html>
 <head>
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; base-uri 'self'; object-src 'none'; script-src 'self' 'wasm-unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:; worker-src 'self' blob:; child-src 'self' blob:; connect-src 'self' data: blob: http://127.0.0.1:4310 http://localhost:4310 ws://127.0.0.1:4310 ws://localhost:4310 http://172.23.10.51:4310 ws://172.23.10.51:4310; form-action 'self'; frame-ancestors 'self'">
   <base href="/">
   <meta charset="UTF-8">
   <meta content="IE=Edge" http-equiv="X-UA-Compatible">
   <meta name="description" content="Automation Request System">
   <meta name="robots" content="noindex,nofollow">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <!-- The page's Content-Security-Policy is NOT written here. It is injected
+       into build\web\index.html by tool\inject_csp.ps1, which deploy.ps1 runs
+       after `flutter build web` — so the policy ships with production but is
+       absent from `flutter run`.
+
+       It has to be that way round: the debug build is compiled by DDC and
+       loaded through eval(), and the hot-restart machinery adds inline
+       scripts. Any policy strict enough to be worth having blocks both, and
+       the app white-screens before it draws a single frame. Edit the policy in
+       tool\inject_csp.ps1 — including the day TLS lands and the https:// /
+       wss:// API origins have to go in. -->
   <title>Automation Request</title>
   <link rel="manifest" href="manifest.json">
   <!-- Automation mark, 256x256, trimmed of the source PNG's transparent margin
        so it fills the 16 px tab slot. The old TPK favicon.png is still here if
        we ever want it back. -->
   <link rel="icon" type="image/png" href="favicon_automation.png">
-  <script>
-    // Flutter 3.44 reports a benign
-    //   "LateInitializationError: Field '_handledContextLostEvent' has not been initialized."
-    // on every hot restart. It is an engine bug: CkSurface.onContextLost()
-    // (engine/canvaskit/surface.dart) reads that field first thing, but only
-    // triggerContextLoss() — an engine test hook — ever assigns it, so a REAL
-    // webglcontextlost event throws. A hot restart drops the old WebGL context,
-    // which is exactly when it fires. Nothing in the app can set the field, and
-    // the restart builds a fresh surface anyway, so there is no UI effect.
-    //
-    // It reaches the console by three different routes and each needs its own
-    // gag: the handler runs as a DOM listener (uncaught 'error' event), some
-    // paths run it from a .then() (unhandledrejection), and the framework may
-    // also relay it through console.error. Every filter matches only this one
-    // message — anything else passes through untouched.
-    (function () {
-      var MARKER = "_handledContextLostEvent";
-      function isEngineContextLostNoise(value) {
-        return !!value && ("" + value).indexOf(MARKER) !== -1;
-      }
-      var origError = console.error.bind(console);
-      console.error = function () {
-        for (var i = 0; i < arguments.length; i++) {
-          if (isEngineContextLostNoise(arguments[i])) return;
-        }
-        return origError.apply(null, arguments);
-      };
-      // Capture phase so this runs before the browser's default reporting.
-      window.addEventListener("error", function (event) {
-        if (isEngineContextLostNoise(event.message) || isEngineContextLostNoise(event.error)) {
-          event.preventDefault();
-        }
-      }, true);
-      window.addEventListener("unhandledrejection", function (event) {
-        if (isEngineContextLostNoise(event.reason)) event.preventDefault();
-      });
-    })();
-  </script>
+  <!-- Silences one benign engine error on every hot restart; see the file. -->
+  <script src="engine_noise_filter.js"></script>
 </head>
 <body>
   <script src="auth_config.js"></script>
