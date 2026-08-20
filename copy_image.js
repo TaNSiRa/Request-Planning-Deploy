@@ -8,15 +8,26 @@
 //      unavailable on the production server (plain http://172.23.10.51).
 //   2. document.execCommand("copy") over a hidden contenteditable holding an
 //      <img>. Still works over plain http; the clipboard gets an HTML flavour,
-//      which Word / Outlook / Teams / Excel paste as a picture — but chat apps
-//      that only accept a real bitmap (LINE) paste NOTHING from it.
+//      which Word / Outlook / Teams / Excel paste as a picture — but anything
+//      that wants a real bitmap or a file (LINE, Claude, Discord, Facebook)
+//      pastes NOTHING from it.
 //   3. Neither worked → download the .png so the user can attach it manually.
 //
-// Because of that LINE gap, whenever path 1 is unavailable we also put the
-// picture on screen in a plain DOM overlay: right-clicking a real <img> and
-// choosing "Copy image" is the browser's own path to a true bitmap on the
-// clipboard, and it works on plain http. The overlay is DOM (not Flutter) on
-// purpose — the Flutter canvas has no right-click "Copy image".
+// Because of that gap, the picture ALSO goes on screen every time, in a plain
+// DOM overlay — including after a successful path 1, so the button does not
+// behave one way on localhost (a secure context) and another on the server.
+// The overlay offers the two routes a browser allows even from an insecure
+// origin:
+//   * right-click the <img> -> "Copy image" — the browser's own copy, which
+//     puts a TRUE bitmap on the clipboard; that one pastes into LINE and Claude.
+//   * drag the <img> straight into the chat window — the overlay tags the drag
+//     with a DownloadURL entry, so what lands in LINE / Claude / Explorer is a
+//     real .png FILE, not a link to a blob: URL they cannot resolve.
+// The overlay is DOM (not Flutter) on purpose: the Flutter canvas has no
+// right-click "Copy image" and cannot start a file drag.
+//
+// The permanent fix for all of this is serving the app over https, which makes
+// path 1 work and turns the button back into one click everywhere.
 //
 // Resolves to "clipboard" | "html" | "manual" | "download" | "failed" so the
 // Dart side can tell the user what actually happened.
@@ -82,13 +93,20 @@
   }
 
   // The overlay described at the top: the picture itself, what already made it
-  // to the clipboard, and how to get a real bitmap for LINE. Only ever one at a
-  // time. Returns true when it was put on screen.
-  function showPicturePanel(blob, fileName, copiedAsHtml) {
+  // to the clipboard, and the two ways to get it into LINE / Claude. Only ever
+  // one at a time. Returns true when it was put on screen.
+  //
+  // `copied` says what the clipboard actually holds — "bitmap" (the real thing),
+  // "html" (the plain-http fallback) or "" (nothing). It changes only the line
+  // of text at the top: the picture, the right-click route and the drag route
+  // are offered every time, because a successful clipboard copy still leaves
+  // people wanting to drag the file somewhere or keep it.
+  function showPicturePanel(blob, fileName, copied) {
     try {
       const existing = document.getElementById("rap-copy-image-overlay");
       if (existing) existing.remove();
 
+      const name = fileName || "image.png";
       const url = URL.createObjectURL(blob);
       const overlay = document.createElement("div");
       overlay.id = "rap-copy-image-overlay";
@@ -100,23 +118,33 @@
       const panel = document.createElement("div");
       panel.style.cssText =
         "background:#fff;border-radius:18px;box-shadow:0 24px 60px rgba(15,23,42,.35);" +
-        "max-width:min(860px,92vw);max-height:88vh;overflow:auto;padding:20px 22px 18px;";
+        "max-width:min(880px,92vw);max-height:88vh;overflow:auto;padding:20px 22px 18px;";
 
       const title = document.createElement("div");
-      title.textContent = "Copy this picture into LINE";
+      title.textContent = "Paste this picture into LINE, Claude or anywhere else";
       title.style.cssText =
         "font-size:17px;font-weight:800;color:#0f172a;margin-bottom:6px;";
 
       const hint = document.createElement("div");
       hint.innerHTML =
-        (copiedAsHtml
-          ? "It is already on the clipboard for <b>Outlook, Word and Teams</b> — just paste there. "
-          : "") +
-        "LINE only accepts a real image on the clipboard, which this browser can hand over " +
-        "only on a secure (https) address. To paste into LINE: <b>right-click the picture " +
-        "below → “Copy image”</b>, then paste in the chat.";
+        copied === "bitmap"
+          ? "It is on the clipboard as a real image — press <b>Ctrl+V</b> in LINE, Claude, Teams, " +
+            "Word, anywhere. The copy below is here if you would rather drag it or keep it:"
+          : (copied === "html"
+              ? "It is already on the clipboard for <b>Outlook, Word and Teams</b> — just press Ctrl+V there. "
+              : "") +
+            "Apps that want a real image (<b>LINE, Claude</b>) need one of these, because this browser " +
+            "hands a picture to the clipboard only on a secure (https) address:";
       hint.style.cssText =
-        "font-size:13px;line-height:1.55;color:#475569;margin-bottom:14px;max-width:760px;";
+        "font-size:13px;line-height:1.55;color:#475569;margin-bottom:10px;max-width:790px;";
+
+      const steps = document.createElement("div");
+      steps.innerHTML =
+        "<div style=\"margin-bottom:4px\"><b>1&nbsp;&nbsp;Right-click the picture &rarr; &ldquo;Copy image&rdquo;</b>, then paste in the chat.</div>" +
+        "<div><b>2&nbsp;&nbsp;Or drag the picture</b> straight into the chat window — it arrives as a .png file.</div>";
+      steps.style.cssText =
+        "font-size:13px;line-height:1.6;color:#0f172a;background:#f1f5f9;border-radius:10px;" +
+        "padding:10px 12px;margin-bottom:14px;max-width:790px;";
 
       const frame = document.createElement("div");
       frame.style.cssText =
@@ -124,8 +152,27 @@
         "display:flex;justify-content:center;";
       const img = document.createElement("img");
       img.src = url;
-      img.alt = fileName || "image.png";
-      img.style.cssText = "max-width:100%;height:auto;display:block;border-radius:6px;";
+      img.alt = name;
+      img.title = "Right-click for “Copy image”, or drag me into the chat";
+      img.draggable = true;
+      img.style.cssText =
+        "max-width:100%;height:auto;display:block;border-radius:6px;cursor:grab;";
+      // Chrome/Edge read this entry when a drag leaves the window and write the
+      // real file at the other end — dropping into LINE or Claude then attaches
+      // a .png instead of a link back to a blob: URL they cannot resolve.
+      img.addEventListener("dragstart", function (event) {
+        try {
+          event.dataTransfer.effectAllowed = "copy";
+          event.dataTransfer.setData("DownloadURL", "image/png:" + name + ":" + url);
+          event.dataTransfer.setData("text/uri-list", url);
+        } catch (err) {
+          console.warn("copy_image: could not tag the drag", err);
+        }
+      });
+      // The Flutter view disables the browser context menu on its own host
+      // element; keep this one out of anything listening further up the tree so
+      // "Copy image" is definitely offered here.
+      img.addEventListener("contextmenu", function (event) { event.stopPropagation(); });
       frame.appendChild(img);
 
       const actions = document.createElement("div");
@@ -139,7 +186,7 @@
       downloadBtn.textContent = "Download .png";
       downloadBtn.style.cssText =
         buttonStyle + "background:#fff;color:#334155;border:1.4px solid #cbd5e1;";
-      downloadBtn.addEventListener("click", function () { download(blob, fileName); });
+      downloadBtn.addEventListener("click", function () { download(blob, name); });
 
       const closeBtn = document.createElement("button");
       closeBtn.type = "button";
@@ -148,7 +195,9 @@
 
       function close() {
         window.removeEventListener("keydown", onKey, true);
-        URL.revokeObjectURL(url);
+        // Revoked late, not now: a drag that has just left the window still
+        // fetches the file from this URL after the overlay is gone.
+        setTimeout(function () { URL.revokeObjectURL(url); }, 60000);
         overlay.remove();
       }
       function onKey(event) {
@@ -168,6 +217,7 @@
       actions.appendChild(closeBtn);
       panel.appendChild(title);
       panel.appendChild(hint);
+      panel.appendChild(steps);
       panel.appendChild(frame);
       panel.appendChild(actions);
       overlay.appendChild(panel);
@@ -192,6 +242,11 @@
     if (window.isSecureContext && navigator.clipboard && window.ClipboardItem) {
       try {
         await navigator.clipboard.write([new ClipboardItem({ "image/png": blob })]);
+        // The picture goes up even though the clipboard already has the real
+        // thing: the panel is also how people drag the file into an app or save
+        // it, and a button that behaves one way on localhost (secure) and
+        // another on the server (not) is a button nobody can learn.
+        showPicturePanel(blob, fileName, "bitmap");
         return "clipboard";
       } catch (err) {
         console.warn("copy_image: clipboard.write refused, falling back", err);
@@ -206,7 +261,7 @@
     }
 
     // No real bitmap went to the clipboard, so offer the picture itself.
-    if (showPicturePanel(blob, fileName, copiedAsHtml)) {
+    if (showPicturePanel(blob, fileName, copiedAsHtml ? "html" : "")) {
       return copiedAsHtml ? "html" : "manual";
     }
     if (copiedAsHtml) return "html";
