@@ -1,0 +1,28 @@
+<!DOCTYPE html>
+<!--
+  PDF viewer for attachments, drawn page by page with pdf.js onto canvases.
+
+  Unlike office.html this one is NOT sandboxed: pdf.js ships only as ES
+  modules plus a module worker, and neither loads from an opaque origin. It is
+  the one library here that is open, widely audited and run with eval and PDF
+  scripting both off, and nothing it draws is live markup (no links, no forms,
+  no text layer).
+
+  Why not just point an iframe at the PDF and let Chrome's own viewer show it:
+  the file would have to be a blob: URL made by the app page, which inherits
+  the app's CSP — and that says object-src 'none', which is what the built-in
+  viewer is. Bundled, it also works the same on every browser and offline.
+-->
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' 'wasm-unsafe-eval'; worker-src 'self'; connect-src 'self'; img-src 'self' data: blob:; style-src 'self' 'unsafe-inline'; font-src 'self' data: blob:">
+  <title>PDF preview</title>
+  <link rel="stylesheet" href="preview.css">
+</head>
+<body>
+  <div id="app"></div>
+  <script src="preview-common.js"></script>
+  <script type="module" src="pdf-viewer.js"></script>
+</body>
+</html>

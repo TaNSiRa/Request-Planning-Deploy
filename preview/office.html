@@ -1,0 +1,34 @@
+<!DOCTYPE html>
+<!--
+  Word / Excel viewer for attachments. Opened by the Flutter app in an iframe
+  with sandbox="allow-scripts" and NO allow-same-origin, so this page runs in
+  an opaque origin: whatever a hostile .docx/.xlsx manages to do inside a
+  rendering library, it cannot read the app's session, its storage or call
+  the API.
+
+  The policy says script-src http: https: rather than 'self' because in an
+  opaque origin 'self' matches nothing — with 'self' not one script loads.
+  Inline script stays blocked and default-src 'none' still allows no fetch,
+  XHR or socket, so a document can't pull code in or send anything out.
+
+  Only classic scripts here: module scripts fetch with CORS, which an opaque
+  origin can't pass. That is also why PDF lives in its own page (pdf.js is
+  module-only). Everything is bundled under vendor/ — PCs without internet
+  must still open files. Versions and sources: vendor/VERSIONS.txt.
+-->
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src http: https:; style-src http: https: 'unsafe-inline'; img-src data: blob:; font-src data: blob:; media-src data: blob:">
+  <title>Attachment preview</title>
+  <link rel="stylesheet" href="preview.css">
+</head>
+<body>
+  <div id="app"></div>
+  <script src="preview-common.js"></script>
+  <script src="vendor/jszip.min.js"></script>
+  <script src="vendor/xlsx.full.min.js"></script>
+  <script src="vendor/docx-preview.min.js"></script>
+  <script src="office.js"></script>
+</body>
+</html>

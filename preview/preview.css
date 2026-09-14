@@ -1,0 +1,208 @@
+/* Shared look of the attachment viewers (office.html, pdf.html). The stage is
+   the same slate as the image preview's backdrop, so a PDF and a photo open
+   into the same room. */
+:root {
+  --stage: #1e293b;
+  --ink: #0f172a;
+  --line: #e2e8f0;
+  font-family: "Leelawadee UI", "Segoe UI", Tahoma, sans-serif;
+}
+
+html, body {
+  margin: 0;
+  height: 100%;
+  overflow: hidden;
+  background: var(--stage);
+  color: #e2e8f0;
+}
+
+#app {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.scroller {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  position: relative;
+}
+
+/* ---- loading / error ---------------------------------------------------- */
+.status {
+  position: absolute;
+  inset: 0;
+  z-index: 10;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  padding: 24px;
+  text-align: center;
+  background: var(--stage);
+}
+.status-title { font-size: 16px; font-weight: 700; color: #f8fafc; }
+.status-detail { font-size: 13px; color: #94a3b8; max-width: 420px; }
+.spinner {
+  width: 34px;
+  height: 34px;
+  margin-bottom: 4px;
+  border-radius: 50%;
+  border: 3px solid rgba(255, 255, 255, .16);
+  border-top-color: #a5b4fc;
+  animation: spin .8s linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* ---- floating zoom pill ------------------------------------------------- */
+.toolbar {
+  position: absolute;
+  left: 50%;
+  bottom: 18px;
+  transform: translateX(-50%);
+  z-index: 5;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 4px;
+  border-radius: 999px;
+  background: rgba(15, 23, 42, .9);
+  box-shadow: 0 10px 28px rgba(0, 0, 0, .35);
+  font-size: 13px;
+  user-select: none;
+}
+.toolbar button {
+  all: unset;
+  box-sizing: border-box;
+  min-width: 32px;
+  height: 32px;
+  padding: 0 8px;
+  border-radius: 999px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  color: #e2e8f0;
+  font-weight: 600;
+  font-size: 15px;
+}
+.toolbar button:hover { background: rgba(255, 255, 255, .12); }
+.toolbar button.label { font-size: 13px; min-width: 58px; font-variant-numeric: tabular-nums; }
+.toolbar .pages-label { padding: 0 10px; color: #cbd5e1; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.toolbar .sep { width: 1px; height: 18px; background: rgba(255, 255, 255, .18); margin: 0 4px; }
+
+/* ---- PDF ---------------------------------------------------------------- */
+.pages {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 16px;
+  padding: 20px 20px 84px;
+  width: max-content;
+  min-width: 100%;
+  box-sizing: border-box;
+}
+.pdf-page {
+  flex: none;
+  background: #fff;
+  box-shadow: 0 6px 20px rgba(0, 0, 0, .4);
+}
+.pdf-page canvas { display: block; width: 100%; height: 100%; }
+
+/* ---- Word: rendered at natural size, zoomed to fit ----------------------- */
+.zoom-host {
+  width: max-content;
+  margin: 0 auto;
+  padding-bottom: 64px;
+}
+.docx-wrapper.docx-wrapper {
+  background: transparent;
+  padding: 20px;
+}
+.docx-wrapper.docx-wrapper > section.docx {
+  box-shadow: 0 6px 20px rgba(0, 0, 0, .4);
+  margin-bottom: 18px;
+}
+
+/* ---- Excel -------------------------------------------------------------- */
+body.sheet { background: #fff; color: var(--ink); }
+body.sheet .status { background: #fff; }
+body.sheet .status-title { color: var(--ink); }
+body.sheet .status-detail { color: #64748b; }
+
+.notice {
+  flex: none;
+  padding: 6px 12px;
+  font-size: 12px;
+  background: #fffbeb;
+  color: #92400e;
+  border-bottom: 1px solid #fde68a;
+}
+.empty-sheet { padding: 40px; color: #64748b; font-size: 14px; }
+
+.grid {
+  border-collapse: separate;
+  border-spacing: 0;
+  table-layout: fixed;
+  width: max-content;
+  font-size: 13px;
+}
+.grid th, .grid td {
+  box-sizing: border-box;
+  height: 22px;
+  padding: 1px 5px;
+  border-right: 1px solid var(--line);
+  border-bottom: 1px solid var(--line);
+  white-space: pre;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  vertical-align: bottom;
+}
+.grid thead th {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  background: #f1f5f9;
+  color: #475569;
+  font-weight: 600;
+  text-align: center;
+  border-color: #cbd5e1;
+}
+.grid tbody th {
+  position: sticky;
+  left: 0;
+  z-index: 1;
+  background: #f1f5f9;
+  color: #64748b;
+  font-weight: 500;
+  text-align: right;
+  border-color: #cbd5e1;
+}
+.grid thead th.corner { left: 0; z-index: 3; }
+.grid td.num { text-align: right; font-variant-numeric: tabular-nums; }
+.grid td.bool { text-align: center; }
+.grid td.err { color: #b91c1c; text-align: center; }
+
+.tabs {
+  flex: none;
+  display: flex;
+  gap: 2px;
+  padding: 0 8px;
+  overflow-x: auto;
+  background: #f8fafc;
+  border-top: 1px solid var(--line);
+}
+.tab {
+  all: unset;
+  cursor: pointer;
+  padding: 8px 14px;
+  font-size: 13px;
+  color: #475569;
+  white-space: nowrap;
+  border-top: 2px solid transparent;
+}
+.tab:hover { background: #eef2f7; }
+.tab.active { color: #15803d; font-weight: 600; background: #fff; border-top-color: #16a34a; }

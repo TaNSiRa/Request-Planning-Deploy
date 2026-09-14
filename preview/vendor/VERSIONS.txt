@@ -1,0 +1,12 @@
+Bundled so attachment previews work on PCs with no internet. Nothing here is
+fetched at runtime. To upgrade, `npm install` the package somewhere scratch and
+copy the same files over.
+
+pdfjs-dist     6.3.289   Apache-2.0   npm pdfjs-dist
+               pdfjs/pdf.min.js         <- build/pdf.min.mjs        (renamed .mjs -> .js, see pdf-viewer.js)
+               pdfjs/pdf.worker.min.js  <- build/pdf.worker.min.mjs (renamed)
+               pdfjs/cmaps, pdfjs/standard_fonts, pdfjs/wasm (quickjs-eval.* left out: PDF scripting stays off)
+xlsx (SheetJS) 0.20.3    Apache-2.0   https://cdn.sheetjs.com/xlsx-0.20.3/xlsx-0.20.3.tgz
+               xlsx.full.min.js  (the npm-registry "xlsx" is stuck at 0.18.5, which has known parser CVEs)
+jszip          3.10.2    MIT          npm jszip        dist/jszip.min.js   (needed by docx-preview)
+docx-preview   0.4.0     Apache-2.0   npm docx-preview dist/docx-preview.min.js
