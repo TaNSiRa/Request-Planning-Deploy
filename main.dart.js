@@ -76503,7 +76503,7 @@ k=A.aa(A.cL(A.U(k,B.r,a0,B.d,B.f,0,B.n),a0,a0,B.ft,a0,B.a_),1)
 a6=A.a([B.ayN,B.aa,A.a0(new A.ny(A.zn(a.d)/100,A.fE(A.c(J.f(a.d,a2))).c,8,a0),a0,140),B.J,A.n(""+A.zn(a.d)+"%",a0,a0,a0,a0,A.as(a0,a0,B.ab,a0,a0,a0,a0,a0,"JetBrains Mono",B.K,a0,12,a0,a0,B.w,a0,a0,!0,a0,a0,a0,a0,a0,a0,a0,a0),a0,a0,a0),B.bh,A.n(""+a4+" / "+a5,a0,a0,a0,a0,B.f5,a0,a0,a0),B.bD],i)
 if(a.gaNC())B.b.D(a6,A.a([A.hT(B.Bo,B.ee,a.gaNJ(),A.wV(a0,a0,a0,a0,a0,a0,a0,a0,a0,B.L,a0,a0,a0,a0,a0,B.Q2,a0,a0,a0,a0)),B.J],i))
 l=a.a
-if(!l.x)l=l.w||l.e==A.al(J.f(a.d,"incharge_user_id"))
+if(!l.x)l=l.w||l.r||l.Q||l.e==A.al(J.f(a.d,"incharge_user_id"))
 else l=!1
 if(l)l=A.c(J.f(a.d,a2))==="IN_PROGRESS"||A.c(J.f(a.d,a2))==="ON_HOLD"
 else l=!1
