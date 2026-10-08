@@ -285,6 +285,84 @@
       var rels = got[1];
       var anchors = kids(doc.documentElement, 'twoCellAnchor')
         .concat(kids(doc.documentElement, 'oneCellAnchor'), kids(doc.documentElement, 'absoluteAnchor'));
+      // One shape: a picture or a text box, at [box] — its share of the
+      // anchor's rectangle ({ x, y, w, h } as fractions).
+      function readPic(pic, box) {
+        var blip = byLocal(pic, 'blip')[0];
+        var rel = blip && rels[blip.getAttribute('r:embed') || blip.getAttributeNS(NS_R, 'embed')];
+        var type = rel ? rel.target.slice(rel.target.lastIndexOf('.') + 1).toLowerCase() : '';
+        var media = rel && IMAGE_TYPES[type] && zip.file(rel.target);
+        if (!media) return null; // EMF / WMF: a browser can't draw them
+        return media.async('uint8array').then(function (data) {
+          return { box: box, src: URL.createObjectURL(new Blob([data], { type: IMAGE_TYPES[type] })) };
+        });
+      }
+      function readTextBox(sp, box) {
+        var body = child(sp, 'txBody');
+        if (!body) return null;
+        var text = byLocal(body, 'p').map(function (p) {
+          return byLocal(p, 't').map(function (t) { return t.textContent; }).join('');
+        }).join('\n');
+        if (!text.trim()) return null;
+        var part = { box: box, text: text };
+        var rPr = byLocal(body, 'rPr')[0] || byLocal(body, 'defRPr')[0];
+        part.fontSize = rPr && attr(rPr, 'sz') ? Number(attr(rPr, 'sz')) / 100 : 11;
+        part.bold = flag(rPr, 'b');
+        var latin = rPr && child(rPr, 'latin');
+        part.fontName = latin ? attr(latin, 'typeface') : '';
+        var textFill = rPr && child(rPr, 'solidFill');
+        var textRgb = textFill && child(textFill, 'srgbClr');
+        part.color = textRgb ? '#' + attr(textRgb, 'val') : '#000000';
+        var pPr = byLocal(body, 'pPr')[0];
+        var algn = attr(pPr, 'algn');
+        part.align = algn === 'ctr' ? 'center' : algn === 'r' ? 'flex-end' : 'flex-start';
+        var bodyPr = child(body, 'bodyPr');
+        var anchor = attr(bodyPr, 'anchor');
+        part.valign = anchor === 'ctr' ? 'center' : anchor === 'b' ? 'flex-end' : 'flex-start';
+        var spPr = child(sp, 'spPr');
+        var fill = spPr && child(spPr, 'solidFill');
+        var rgb = fill && child(fill, 'srgbClr');
+        part.fill = rgb ? '#' + attr(rgb, 'val') : '';
+        var ln = spPr && child(spPr, 'ln');
+        var lnFill = ln && child(ln, 'solidFill');
+        var lnRgb = lnFill && child(lnFill, 'srgbClr');
+        part.line = lnRgb ? '#' + attr(lnRgb, 'val') : '';
+        return part;
+      }
+      function xfrmOf(node) {
+        var props = child(node, node.localName === 'grpSp' ? 'grpSpPr' : 'spPr');
+        var x = child(props, 'xfrm');
+        if (!x) return null;
+        function pt(name, a, b) {
+          var n = child(x, name);
+          return n ? { a: Number(attr(n, a)) || 0, b: Number(attr(n, b)) || 0 } : null;
+        }
+        return { off: pt('off', 'x', 'y'), ext: pt('ext', 'cx', 'cy'), chOff: pt('chOff', 'x', 'y'), chExt: pt('chExt', 'cx', 'cy') };
+      }
+      // A shape, or a group's shapes laid out by the group's own coordinates
+      // (chOff / chExt map onto wherever the group is drawn).
+      function readShapes(node, box, out) {
+        if (node.localName === 'pic') out.push(readPic(node, box));
+        else if (node.localName === 'sp') out.push(readTextBox(node, box));
+        else if (node.localName === 'grpSp') {
+          var g = xfrmOf(node);
+          var origin = g && (g.chOff || g.off);
+          var span = g && (g.chExt || g.ext);
+          if (!origin || !span || !span.a || !span.b) return;
+          for (var c = node.firstElementChild; c; c = c.nextElementSibling) {
+            if (c.localName !== 'pic' && c.localName !== 'sp' && c.localName !== 'grpSp') continue;
+            var x = xfrmOf(c);
+            if (!x || !x.off || !x.ext) continue;
+            readShapes(c, {
+              x: box.x + ((x.off.a - origin.a) / span.a) * box.w,
+              y: box.y + ((x.off.b - origin.b) / span.b) * box.h,
+              w: (x.ext.a / span.a) * box.w,
+              h: (x.ext.b / span.b) * box.h
+            }, out);
+          }
+        }
+      }
+
       return Promise.all(anchors.map(function (a) {
         var item = {};
         var from = child(a, 'from');
@@ -297,50 +375,12 @@
         if (a.localName === 'twoCellAnchor' && to) item.to = anchorPoint(to);
         else if (ext) item.size = { w: Number(attr(ext, 'cx')) / EMU_PER_PX, h: Number(attr(ext, 'cy')) / EMU_PER_PX };
         else return null;
-
-        var pic = child(a, 'pic');
-        if (pic) {
-          var blip = byLocal(pic, 'blip')[0];
-          var rel = blip && rels[blip.getAttribute('r:embed') || blip.getAttributeNS(NS_R, 'embed')];
-          var type = rel ? rel.target.slice(rel.target.lastIndexOf('.') + 1).toLowerCase() : '';
-          var media = rel && IMAGE_TYPES[type] && zip.file(rel.target);
-          if (!media) return null; // EMF / WMF: a browser can't draw them
-          return media.async('uint8array').then(function (data) {
-            item.src = URL.createObjectURL(new Blob([data], { type: IMAGE_TYPES[type] }));
-            return item;
-          });
-        }
-        var sp = child(a, 'sp');
-        var body = sp && child(sp, 'txBody');
-        if (!body) return null;
-        var text = byLocal(body, 'p').map(function (p) {
-          return byLocal(p, 't').map(function (t) { return t.textContent; }).join('');
-        }).join('\n');
-        if (!text.trim()) return null;
-        item.text = text;
-        var rPr = byLocal(body, 'rPr')[0] || byLocal(body, 'defRPr')[0];
-        item.fontSize = rPr && attr(rPr, 'sz') ? Number(attr(rPr, 'sz')) / 100 : 11;
-        item.bold = flag(rPr, 'b');
-        var latin = rPr && child(rPr, 'latin');
-        item.fontName = latin ? attr(latin, 'typeface') : '';
-        var textFill = rPr && child(rPr, 'solidFill');
-        var textRgb = textFill && child(textFill, 'srgbClr');
-        item.color = textRgb ? '#' + attr(textRgb, 'val') : '#000000';
-        var pPr = byLocal(body, 'pPr')[0];
-        var algn = attr(pPr, 'algn');
-        item.align = algn === 'ctr' ? 'center' : algn === 'r' ? 'flex-end' : 'flex-start';
-        var bodyPr = child(body, 'bodyPr');
-        var anchor = attr(bodyPr, 'anchor');
-        item.valign = anchor === 'ctr' ? 'center' : anchor === 'b' ? 'flex-end' : 'flex-start';
-        var spPr = child(sp, 'spPr');
-        var fill = spPr && child(spPr, 'solidFill');
-        var rgb = fill && child(fill, 'srgbClr');
-        item.fill = rgb ? '#' + attr(rgb, 'val') : '';
-        var ln = spPr && child(spPr, 'ln');
-        var lnFill = ln && child(ln, 'solidFill');
-        var lnRgb = lnFill && child(lnFill, 'srgbClr');
-        item.line = lnRgb ? '#' + attr(lnRgb, 'val') : '';
-        return item;
+        var parts = [];
+        for (var c = a.firstElementChild; c; c = c.nextElementSibling) readShapes(c, { x: 0, y: 0, w: 1, h: 1 }, parts);
+        return Promise.all(parts).then(function (got) {
+          item.parts = got.filter(Boolean);
+          return item.parts.length ? item : null;
+        });
       })).then(function (items) { return items.filter(Boolean); });
     });
   }
@@ -737,30 +777,33 @@
         h = item.size.h;
       }
       if (!(w > 0 && h > 0)) return;
-      var node;
-      if (item.src) {
-        node = document.createElement('img');
-        node.src = item.src;
-        node.alt = '';
-        node.className = 'xl-pic';
-      } else {
-        node = P.el('div', 'xl-shape');
-        var span = P.el('div', null, item.text);
-        span.style.fontSize = item.fontSize + 'pt';
-        if (item.bold) span.style.fontWeight = '700';
-        if (item.fontName) span.style.fontFamily = '"' + item.fontName + '", sans-serif';
-        span.style.color = item.color;
-        node.appendChild(span);
-        node.style.alignItems = item.align;
-        node.style.justifyContent = item.valign;
-        if (item.fill) node.style.background = item.fill;
-        if (item.line) node.style.outline = '1px solid ' + item.line;
-      }
-      node.style.left = at.x + 'px';
-      node.style.top = at.y + 'px';
-      node.style.width = w + 'px';
-      node.style.height = h + 'px';
-      drawLayer.appendChild(node);
+      // A group's shapes each take their share of the anchor's rectangle.
+      item.parts.forEach(function (part) {
+        var node;
+        if (part.src) {
+          node = document.createElement('img');
+          node.src = part.src;
+          node.alt = '';
+          node.className = 'xl-pic';
+        } else {
+          node = P.el('div', 'xl-shape');
+          var span = P.el('div', null, part.text);
+          span.style.fontSize = part.fontSize + 'pt';
+          if (part.bold) span.style.fontWeight = '700';
+          if (part.fontName) span.style.fontFamily = '"' + part.fontName + '", sans-serif';
+          span.style.color = part.color;
+          node.appendChild(span);
+          node.style.alignItems = part.align;
+          node.style.justifyContent = part.valign;
+          if (part.fill) node.style.background = part.fill;
+          if (part.line) node.style.outline = '1px solid ' + part.line;
+        }
+        node.style.left = at.x + part.box.x * w + 'px';
+        node.style.top = at.y + part.box.y * h + 'px';
+        node.style.width = part.box.w * w + 'px';
+        node.style.height = part.box.h * h + 'px';
+        drawLayer.appendChild(node);
+      });
     });
 
     grid.appendChild(gridLayer);
