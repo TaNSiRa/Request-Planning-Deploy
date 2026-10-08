@@ -206,3 +206,68 @@ body.sheet .status-detail { color: #64748b; }
 }
 .tab:hover { background: #eef2f7; }
 .tab.active { color: #15803d; font-weight: 600; background: #fff; border-top-color: #16a34a; }
+
+/* Excel as Excel draws it — see sheet-view.js. Every cell, line and picture
+   is placed absolutely on the sheet in Excel's own pixels. */
+.xl { position: relative; background: #fff; color: #000; }
+.xl-colhead {
+  position: sticky;
+  top: 0;
+  z-index: 3;
+  display: flex;
+  height: 20px;
+}
+.xl-corner {
+  position: sticky;
+  left: 0;
+  z-index: 1;
+  flex: none;
+  box-sizing: border-box;
+  background: #f1f5f9;
+  border-right: 1px solid #cbd5e1;
+  border-bottom: 1px solid #cbd5e1;
+}
+.xl-letters, .xl-numbers { position: relative; flex: none; box-sizing: border-box; background: #f1f5f9; }
+.xl-letters { border-bottom: 1px solid #cbd5e1; }
+.xl-body { display: flex; }
+.xl-numbers {
+  position: sticky;
+  left: 0;
+  z-index: 2;
+  border-right: 1px solid #cbd5e1;
+}
+.xl-head {
+  position: absolute;
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  font: 500 11px/1 system-ui, sans-serif;
+  color: #64748b;
+}
+.xl-letters .xl-head { top: 0; height: 100%; border-right: 1px solid #dde3ea; }
+.xl-numbers .xl-head { left: 0; width: 100%; border-bottom: 1px solid #dde3ea; }
+.xl-sheet { position: relative; flex: none; overflow: hidden; background: #fff; }
+.xl-gl, .xl-fill, .xl-text, .xl-pic, .xl-shape { position: absolute; box-sizing: border-box; }
+.xl-line-h, .xl-line-v { position: absolute; box-sizing: content-box; }
+.xl-gl { background: #e1e1e1; }
+.xl-blank { background: #fff; }
+.xl-text {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  padding: 0 2px;
+}
+.xl-line, .xl-wrap { line-height: 1.2; }
+.xl-line { white-space: pre; }
+.xl-wrap { white-space: pre-wrap; overflow-wrap: break-word; }
+.xl-pic { object-fit: fill; }
+.xl-shape {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  padding: 2px 4px;
+  white-space: pre;
+  line-height: 1.15;
+}

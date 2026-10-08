@@ -74,16 +74,26 @@
   }
 
   // ---- Excel --------------------------------------------------------------
-  // A plain grid: values as Excel formats them, merged cells, column widths,
-  // solid fills, a tab per visible sheet. No formulas are recalculated — the
-  // value shown is the one Excel last saved.
+  // Drawn the way Excel draws it (sheet-view.js): its column widths, row
+  // heights, fonts, fills, borders, merged cells and the pictures / text boxes
+  // over the cells — signatures land in their boxes. No formulas are
+  // recalculated: the value shown is the one Excel last saved. If the styling
+  // can't be read, a plain grid of the values still shows.
   var MAX_COLS = 200;
   var MAX_CELLS = 60000;
 
   function renderSheet(bytes) {
     var book = XLSX.read(bytes, { type: 'array', cellStyles: true, cellDates: true });
     document.body.classList.add('sheet');
+    return RapSheet.open(bytes)
+      .catch(function (err) {
+        console.warn('sheet styling skipped', err);
+        return null;
+      })
+      .then(function (styled) { showBook(book, styled); });
+  }
 
+  function showBook(book, styled) {
     var notice = P.el('div', 'notice');
     notice.hidden = true;
     var scroller = P.el('div', 'scroller');
@@ -106,21 +116,60 @@
       return b;
     });
 
+    // Zoom: fits the sheet's width to the frame (never past 100%) until the
+    // person picks a zoom of their own.
+    var content = null;
+    var naturalWidth = 1;
+    var manual = null;
+    function effective() {
+      if (manual != null) return manual;
+      return Math.max(0.4, Math.min(1, (scroller.clientWidth - 4) / naturalWidth));
+    }
+    var bar = P.zoomBar(app, scroller, {
+      get: effective,
+      set: function (scale) {
+        manual = scale;
+        apply();
+      }
+    });
+    function apply() {
+      if (content) content.style.zoom = effective();
+      bar.update();
+    }
+    new ResizeObserver(apply).observe(scroller);
+
+    var shown = 0;
     function show(sheet) {
+      var ticket = ++shown;
       buttons.forEach(function (b, i) { b.classList.toggle('active', sheets[i] === sheet); });
-      var built = buildGrid(book.Sheets[sheet.name]);
-      scroller.textContent = '';
-      scroller.scrollTop = 0;
-      scroller.scrollLeft = 0;
-      scroller.appendChild(built.node);
-      notice.hidden = !built.note;
-      notice.textContent = built.note || '';
+      var ws = book.Sheets[sheet.name];
+      var limits = { maxCols: MAX_COLS, maxCells: MAX_CELLS };
+      var drawn = styled
+        ? styled.draw(sheet.name, ws, limits).catch(function (err) {
+          console.warn('sheet styling skipped', err);
+          return null;
+        })
+        : Promise.resolve(null);
+      drawn.then(function (built) {
+        if (ticket !== shown) return;
+        if (!built) built = buildGrid(ws);
+        scroller.textContent = '';
+        scroller.scrollTop = 0;
+        scroller.scrollLeft = 0;
+        scroller.appendChild(built.node);
+        content = built.node;
+        naturalWidth = built.width || built.node.scrollWidth || 1;
+        apply();
+        notice.hidden = !built.note;
+        notice.textContent = built.note || '';
+        P.clearStatus(app);
+      });
     }
 
-    P.clearStatus(app);
     show(sheets[0]);
   }
 
+  // The fallback: values in a plain grid, when the styling can't be read.
   function columnWidth(col) {
     if (!col) return 80;
     if (col.wpx) return Math.round(col.wpx);
