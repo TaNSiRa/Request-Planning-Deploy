@@ -437,6 +437,33 @@
           }
         });
       });
+      // Page setup, for printing (see printView): manual page breaks, paper,
+      // orientation, margins and any fit-to-page / scale.
+      var setup = child(root, 'pageSetup');
+      var fit = child(child(root, 'sheetPr'), 'pageSetUpPr');
+      var margins = child(root, 'pageMargins');
+      var options = child(root, 'printOptions');
+      function margin(name, fallback) {
+        var v = attr(margins, name);
+        return v != null && isFinite(Number(v)) ? Number(v) : fallback;
+      }
+      function count(name) {
+        var v = attr(setup, name);
+        return v == null ? 1 : Number(v) || 0;
+      }
+      sheet.page = {
+        breaks: kids(child(root, 'rowBreaks'), 'brk').map(function (b) { return Number(attr(b, 'id')); })
+          .filter(function (n) { return n > 0; }),
+        paper: Number(attr(setup, 'paperSize')) || 9,
+        landscape: attr(setup, 'orientation') === 'landscape',
+        scale: Number(attr(setup, 'scale')) || 100,
+        fitToPage: flag(fit, 'fitToPage'),
+        fitWidth: count('fitToWidth'),
+        fitHeight: count('fitToHeight'),
+        margins: { left: margin('left', 0.7), right: margin('right', 0.7), top: margin('top', 0.75), bottom: margin('bottom', 0.75) },
+        centered: flag(options, 'horizontalCentered'),
+        gridlines: flag(options, 'gridLines')
+      };
       var drawingNode = child(root, 'drawing');
       var rid = drawingNode && (drawingNode.getAttribute('r:id') || drawingNode.getAttributeNS(NS_R, 'id'));
       var drawingRel = rid ? rels[rid] : relOfType(rels, '/drawing');
@@ -463,6 +490,12 @@
           dn.textContent.split(',').forEach(function (part) {
             var range = decodeRange(part.slice(part.lastIndexOf('!') + 1).replace(/\$/g, ''));
             if (range) sheet.printLastCol = Math.max(sheet.printLastCol || 0, range.c1);
+            if (range) {
+              var area = sheet.printArea;
+              sheet.printArea = area
+                ? { r0: Math.min(area.r0, range.r0), c0: Math.min(area.c0, range.c0), r1: Math.max(area.r1, range.r1), c1: Math.max(area.c1, range.c1) }
+                : range;
+            }
           });
         });
         var stylesRel = relOfType(wbRels, '/styles');
@@ -486,7 +519,7 @@
                     return [];
                   })
                   : Promise.resolve([]);
-                return drawing.then(function (items) { return layout(sheet, items, ws, styles, limits, info.printLastCol); });
+                return drawing.then(function (items) { return layout(sheet, items, ws, styles, limits, info); });
               });
             }
           };
@@ -496,7 +529,8 @@
   }
 
   // ---- layout --------------------------------------------------------------------
-  function layout(sheet, items, ws, styles, limits, printLastCol) {
+  function layout(sheet, items, ws, styles, limits, info) {
+    var printLastCol = info.printLastCol;
     var mdw = styles.mdw;
     // Stored widths already include Excel's 5px of cell padding.
     function widthPx(w) { return Math.floor(((256 * w + Math.floor(128 / mdw)) / 256) * mdw); }
@@ -812,8 +846,103 @@
     grid.appendChild(borderLayer);
     grid.appendChild(drawLayer);
     var fitCol = printLastCol != null ? Math.min(printLastCol, lastCol) : lastCol;
-    return { node: root, width: rowHeadW + colLeft[fitCol + 1], note: note };
+    var area = info.printArea || { r0: 0, c0: 0, r1: lastRow, c1: lastCol };
+    return {
+      node: root,
+      width: rowHeadW + colLeft[fitCol + 1],
+      note: note,
+      print: {
+        grid: grid,
+        colLeft: colLeft,
+        rowTop: rowTop,
+        page: sheet.page,
+        area: {
+          r0: Math.min(area.r0, lastRow),
+          c0: Math.min(area.c0, lastCol),
+          r1: Math.min(area.r1, lastRow),
+          c1: Math.min(area.c1, lastCol)
+        }
+      }
+    };
   }
 
-  window.RapSheet = { open: open };
+  // ---- printing ------------------------------------------------------------------
+  // Paper sizes in mm by Excel's paperSize code; anything unknown prints on A4.
+  var PAPER = { 1: [215.9, 279.4], 5: [215.9, 355.6], 8: [297, 420], 9: [210, 297], 11: [148, 210] };
+  var PX_PER_MM = 96 / 25.4;
+
+  // The drawn sheet cut into printed pages the way Excel would: only the print
+  // area, a new page at every manual page break (an OT form per page), more
+  // breaks wherever a page fills up, scaled to fit the paper width, no row or
+  // column headers, and gridlines only when the file asks for them.
+  // Returns { node, pageCss } — the pages, and the @page rule they are sized for.
+  function printView(print) {
+    var page = print.page || { breaks: [], paper: 9, landscape: false, scale: 100, fitToPage: false, fitWidth: 1, fitHeight: 1, margins: { left: 0.7, right: 0.7, top: 0.75, bottom: 0.75 } };
+    var area = print.area;
+    var colLeft = print.colLeft;
+    var rowTop = print.rowTop;
+    var paper = PAPER[page.paper] || PAPER[9];
+    var paperW = page.landscape ? paper[1] : paper[0];
+    var paperH = page.landscape ? paper[0] : paper[1];
+    var m = page.margins;
+    // Room on the paper, in CSS px; a couple of px spare so rounding never
+    // pushes a page's last row onto a page of its own.
+    var roomW = paperW * PX_PER_MM - (m.left + m.right) * 96 - 2;
+    var roomH = paperH * PX_PER_MM - (m.top + m.bottom) * 96 - 2;
+
+    var x0 = colLeft[area.c0];
+    var areaW = colLeft[area.c1 + 1] - x0;
+    var areaH = rowTop[area.r1 + 1] - rowTop[area.r0];
+    var zoom = page.fitToPage ? 1 : page.scale / 100;
+    if (page.fitToPage && page.fitWidth > 0) zoom = Math.min(zoom, roomW * page.fitWidth / areaW);
+    if (page.fitToPage && page.fitHeight > 0) zoom = Math.min(zoom, roomH * page.fitHeight / areaH);
+    // Columns are never split across pages here: a sheet wider than the paper
+    // is shrunk to fit it instead.
+    zoom = Math.max(0.1, Math.min(zoom, roomW / areaW));
+
+    // Row ranges, one per page.
+    var manual = {};
+    page.breaks.forEach(function (row) { manual[row] = true; });
+    var pages = [];
+    var start = area.r0;
+    for (var r = area.r0; r <= area.r1; r++) {
+      var tall = (rowTop[r + 1] - rowTop[start]) * zoom > roomH;
+      if (r > start && (manual[r] || tall)) {
+        pages.push([start, r - 1]);
+        start = r;
+      }
+    }
+    pages.push([start, area.r1]);
+
+    var parts = Array.prototype.slice.call(print.grid.children);
+    var root = P.el('div', 'print-root');
+    pages.forEach(function (range) {
+      var y0 = rowTop[range[0]];
+      var y1 = rowTop[range[1] + 1];
+      var sheet = P.el('div', 'print-page');
+      sheet.style.zoom = zoom;
+      if (page.centered) sheet.style.margin = '0 auto';
+      sheet.style.width = areaW + 'px';
+      sheet.style.height = y1 - y0 + 'px';
+      var grid = print.grid.cloneNode(false);
+      grid.style.left = -x0 + 'px';
+      grid.style.top = -y0 + 'px';
+      // Only what reaches into this page's rows: every page holding a copy of
+      // the whole sheet would make a 31-page month very heavy to print.
+      parts.forEach(function (part) {
+        if (!page.gridlines && part.classList.contains('xl-gl')) return;
+        var top = parseFloat(part.style.top) || 0;
+        var bottom = top + (parseFloat(part.style.height) || part.offsetHeight || 0);
+        if (bottom > y0 && top < y1) grid.appendChild(part.cloneNode(true));
+      });
+      sheet.appendChild(grid);
+      root.appendChild(sheet);
+    });
+
+    var css = '@page { size: ' + paperW + 'mm ' + paperH + 'mm; margin: ' +
+      m.top + 'in ' + m.right + 'in ' + m.bottom + 'in ' + m.left + 'in; }';
+    return { node: root, pageCss: css };
+  }
+
+  window.RapSheet = { open: open, printView: printView };
 })();

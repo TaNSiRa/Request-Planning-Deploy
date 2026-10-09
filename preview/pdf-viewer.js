@@ -155,4 +155,55 @@ async function show(pdf) {
   new ResizeObserver(() => { if (manual == null) layout(); }).observe(scroller);
   layout();
   updatePageLabel();
+
+  P.setPrinter(() => printAll(pages));
+}
+
+// On screen only the pages near the viewport have a canvas, so printing
+// draws every page afresh as a picture, each at its own size on paper.
+const PRINT_SCALE = 2; // ~144 dpi: sharp on paper, light enough for long files
+
+async function printAll(pages) {
+  P.showStatus(app, 'loading', 'Preparing to print…');
+  const root = P.el('div', 'print-root');
+  const urls = [];
+  const first = pages[0];
+  const rule = P.el('style', null, `@page { size: ${first.width}pt ${first.height}pt; margin: 0; }`);
+  try {
+    for (const p of pages) {
+      const viewport = p.page.getViewport({ scale: PRINT_SCALE });
+      const canvas = document.createElement('canvas');
+      canvas.width = Math.floor(viewport.width);
+      canvas.height = Math.floor(viewport.height);
+      // intent 'print': print-quality drawing, and it doesn't pace itself on
+      // animation frames, so it finishes even while the tab is hidden.
+      await p.page.render({ canvas, viewport, intent: 'print' }).promise;
+      const blob = await new Promise((resolve) => canvas.toBlob(resolve, 'image/png'));
+      const url = URL.createObjectURL(blob);
+      urls.push(url);
+      const img = document.createElement('img');
+      img.className = 'print-pdf-page';
+      img.style.width = p.width + 'pt';
+      img.style.height = p.height + 'pt';
+      // onload rather than img.decode(): decode() can wait for the tab to
+      // become visible.
+      await new Promise((resolve, reject) => {
+        img.onload = resolve;
+        img.onerror = reject;
+        img.src = url;
+      });
+      root.appendChild(img);
+    }
+    P.clearStatus(app);
+    document.head.appendChild(rule);
+    document.body.appendChild(root);
+    document.body.classList.add('printing');
+    window.print();
+  } finally {
+    P.clearStatus(app);
+    document.body.classList.remove('printing');
+    rule.remove();
+    root.remove();
+    urls.forEach((url) => URL.revokeObjectURL(url));
+  }
 }

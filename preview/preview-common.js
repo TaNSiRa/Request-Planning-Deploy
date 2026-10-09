@@ -10,6 +10,7 @@
 //                                   iframe, so without this the idle auto-logout
 //                                   fires on someone reading a long document.
 //   frame -> app  preview-close     Escape pressed while the frame had focus
+//   app -> frame  preview-print     the header's Print button: print the file
 //   frame -> app  preview-error     rendering failed (the frame says so itself)
 // Every message carries the token from this page's #hash, and both sides drop
 // a message that doesn't.
@@ -51,6 +52,33 @@
     var id = decodeURIComponent(href.slice(1));
     var target = document.getElementById(id) || document.getElementsByName(id)[0];
     if (target) target.scrollIntoView({ block: 'start' });
+  }, true);
+
+  // Printing: each viewer hands over how it prints once its file is drawn
+  // (a PDF has to draw every page first, a sheet cuts itself into pages).
+  // Until then — still loading, or failed — a print request does nothing.
+  // Ctrl+P lands here too, so it prints the file rather than the viewer.
+  var printer = null;
+  var printing = false;
+  function setPrinter(fn) { printer = fn; }
+  function print() {
+    if (!printer || printing) return;
+    printing = true;
+    Promise.resolve()
+      .then(function () { return printer(); })
+      .catch(function (err) { console.error('print failed', err); })
+      .then(function () { printing = false; });
+  }
+  window.addEventListener('message', function (e) {
+    if (e.source !== parent) return;
+    var m = e.data;
+    if (m && m.rap === 'preview-print' && m.token === token) print();
+  });
+  window.addEventListener('keydown', function (e) {
+    if ((e.ctrlKey || e.metaKey) && !e.altKey && (e.key === 'p' || e.key === 'P')) {
+      e.preventDefault();
+      print();
+    }
   }, true);
 
   function onLoad(handler) {
@@ -160,6 +188,7 @@
     showStatus: showStatus,
     clearStatus: clearStatus,
     fail: fail,
-    zoomBar: zoomBar
+    zoomBar: zoomBar,
+    setPrinter: setPrinter
   };
 })();

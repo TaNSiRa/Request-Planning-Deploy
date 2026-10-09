@@ -271,3 +271,38 @@ body.sheet .status-detail { color: #64748b; }
   white-space: pre;
   line-height: 1.15;
 }
+
+/* ---- printing ----------------------------------------------------------
+   The viewer chrome (zoom pill, sheet tabs, notices) never prints. A PDF or
+   a sheet prints from a .print-root built just for the print (pdf-viewer.js,
+   RapSheet.printView) while the on-screen view hides; a Word file and the
+   plain fallback grid print the page as shown, unclipped. */
+@media screen {
+  .print-root { display: none; }
+}
+@media print {
+  html, body { height: auto; overflow: visible; background: #fff; }
+  .toolbar, .tabs, .notice, .status { display: none !important; }
+  body.printing #app { display: none; }
+
+  .print-pdf-page { display: block; break-after: page; }
+  .print-pdf-page:last-child { break-after: auto; }
+
+  .print-page { position: relative; overflow: hidden; break-after: page; }
+  .print-page:last-child { break-after: auto; }
+  .print-page .xl-sheet { position: absolute; }
+
+  body.doc #app, body.print-screen #app { position: static; display: block; }
+  body.doc .scroller, body.print-screen .scroller { overflow: visible; }
+  body.doc .zoom-host { zoom: 1 !important; padding: 0; }
+  body.print-screen .scroller > * { zoom: 1 !important; }
+  .docx-wrapper.docx-wrapper { padding: 0; background: none; display: block; }
+  .docx-wrapper.docx-wrapper > section.docx {
+    box-shadow: none;
+    margin: 0;
+    min-height: 0 !important;
+    break-after: page;
+  }
+  .docx-wrapper.docx-wrapper > section.docx:last-of-type { break-after: auto; }
+  .grid thead th, .grid tbody th { position: static; }
+}

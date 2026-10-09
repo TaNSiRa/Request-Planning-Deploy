@@ -70,6 +70,15 @@
     }).then(function () {
       P.clearStatus(app);
       fitToWidth(s.scroller, s.host, s.host.scrollWidth, 1);
+      // Printed straight from the page on screen (print rules in preview.css),
+      // one rendered page per sheet of paper, on the document's own paper size.
+      document.body.classList.add('doc');
+      var first = s.host.querySelector('section.docx');
+      var size = first && first.style.width && first.style.minHeight
+        ? first.style.width + ' ' + first.style.minHeight
+        : 'auto';
+      document.head.appendChild(P.el('style', null, '@page { size: ' + size + '; margin: 0; }'));
+      P.setPrinter(function () { window.print(); });
     });
   }
 
@@ -138,6 +147,24 @@
     }
     new ResizeObserver(apply).observe(scroller);
 
+    // Print prints the sheet on screen, cut into pages the way Excel would
+    // (RapSheet.printView). The plain fallback grid prints as it is shown.
+    var printable = null;
+    P.setPrinter(function () {
+      var view = printable ? RapSheet.printView(printable) : null;
+      var rule = P.el('style', null, view ? view.pageCss : '@page { margin: 12mm; }');
+      document.head.appendChild(rule);
+      if (view) document.body.appendChild(view.node);
+      document.body.classList.add(view ? 'printing' : 'print-screen');
+      try {
+        window.print();
+      } finally {
+        document.body.classList.remove('printing', 'print-screen');
+        rule.remove();
+        if (view) view.node.remove();
+      }
+    });
+
     var shown = 0;
     function show(sheet) {
       var ticket = ++shown;
@@ -158,6 +185,7 @@
         scroller.scrollLeft = 0;
         scroller.appendChild(built.node);
         content = built.node;
+        printable = built.print || null;
         naturalWidth = built.width || built.node.scrollWidth || 1;
         apply();
         notice.hidden = !built.note;

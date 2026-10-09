@@ -4,7 +4,8 @@
   with sandbox="allow-scripts" and NO allow-same-origin, so this page runs in
   an opaque origin: whatever a hostile .docx/.xlsx manages to do inside a
   rendering library, it cannot read the app's session, its storage or call
-  the API.
+  the API. The sandbox also has allow-modals, only so Print can open the
+  browser's print dialog.
 
   The policy says script-src http: https: rather than 'self' because in an
   opaque origin 'self' matches nothing — with 'self' not one script loads.
