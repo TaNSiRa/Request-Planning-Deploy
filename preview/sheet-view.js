@@ -900,21 +900,58 @@
     // is shrunk to fit it instead.
     zoom = Math.max(0.1, Math.min(zoom, roomW / areaW));
 
-    // Row ranges, one per page.
+    var parts = Array.prototype.slice.call(print.grid.children);
+
+    // What a page break must not cut through: pictures, text boxes and the
+    // text of merged cells. A break that would (the off-site form's break
+    // lands one row into its Grade table and signature box) moves up to the
+    // row where that thing starts, so it begins whole on the next page.
+    var solid = [];
+    parts.forEach(function (part) {
+      var cls = part.classList;
+      if (!cls.contains('xl-pic') && !cls.contains('xl-shape') && !cls.contains('xl-text')) return;
+      var top = parseFloat(part.style.top) || 0;
+      solid.push([top, top + (parseFloat(part.style.height) || 0)]);
+    });
+    function rowAt(y) {
+      var k = area.r0;
+      while (k < area.r1 && rowTop[k + 1] <= y) k++;
+      return k;
+    }
+    function safeBreak(row, start) {
+      for (var guard = 0; guard < 50; guard++) {
+        var y = rowTop[row];
+        var cut = null;
+        for (var i = 0; i < solid.length; i++) {
+          if (solid[i][0] < y - 1 && solid[i][1] > y + 1) { cut = solid[i]; break; }
+        }
+        if (!cut) return row;
+        var above = rowAt(cut[0]);
+        // Starts on this page's first row: nowhere to move to, cut as is.
+        if (above <= start) return row;
+        row = above;
+      }
+      return row;
+    }
+
+    // Row ranges, one per page. Like Excel, manual page breaks are ignored
+    // when Fit to sets how many pages tall (the off-site form: 1 x 1 page,
+    // with a stray break mid-form); with the height left automatic (the OT
+    // form: 1 page wide) they still start new pages.
     var manual = {};
-    page.breaks.forEach(function (row) { manual[row] = true; });
+    var fixedHeight = page.fitToPage && page.fitHeight > 0;
+    if (!fixedHeight) page.breaks.forEach(function (row) { manual[row] = true; });
     var pages = [];
     var start = area.r0;
     for (var r = area.r0; r <= area.r1; r++) {
       var tall = (rowTop[r + 1] - rowTop[start]) * zoom > roomH;
       if (r > start && (manual[r] || tall)) {
-        pages.push([start, r - 1]);
-        start = r;
+        var at = safeBreak(r, start);
+        pages.push([start, at - 1]);
+        start = at;
       }
     }
     pages.push([start, area.r1]);
-
-    var parts = Array.prototype.slice.call(print.grid.children);
     var root = P.el('div', 'print-root');
     pages.forEach(function (range) {
       var y0 = rowTop[range[0]];
