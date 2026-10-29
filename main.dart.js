@@ -63236,7 +63236,7 @@ A.Ys.prototype={
 u(a){var s=null,r="JetBrains Mono",q=A.A(12),p=A.ay(B.dM,B.o,1),o=A.B(B.u,B.a85,B.h,s,s,new A.D(B.cM,s,s,A.A(11),s,s,s,B.l),s,40,s,s,s,s,s,40),n=this.c,m=J.H(n),l=A.m(A.c(m.h(n,"title")),s,s,s,s,B.it,s,s,s),k=A.m(A.c(m.h(n,"request_no")),s,s,s,s,A.aq(s,s,B.I,s,s,s,s,s,r,B.M,s,12,s,s,B.ah,s,s,!0,s,s,s,s,s,s,s,s),s,s,s),j=m.h(n,"requested_by_name"),i=t.p
 j=A.a([l,B.cE,A.C(A.a([k,A.m("  \xb7 requested by "+A.c(j==null?"-":j),s,s,s,s,B.cd,s,s,s)],i),B.j,B.d,B.f,0,s,s),B.bo,A.cm(B.a9,A.a([A.C(A.a([B.aA9,A.m(A.dS(m.h(n,"previous_start"))+" \u2013 "+A.dS(m.h(n,"previous_end")),s,s,s,s,A.aq(s,s,B.I,s,s,s,s,s,r,B.M,s,12,s,s,B.B,s,s,!0,s,s,s,s,s,s,s,s),s,s,s)],i),B.j,B.d,B.t,0,s,s),A.C(A.a([B.aDp,A.m(A.dS(m.h(n,"requested_start"))+" \u2013 "+A.dS(m.h(n,"requested_end")),s,s,s,s,A.aq(s,s,B.aK,s,s,s,s,s,r,B.M,s,12,s,s,B.B,s,s,!0,s,s,s,s,s,s,s,s),s,s,s)],i),B.j,B.d,B.t,0,s,s)],i),B.aL,4,16)],i)
 l=m.h(n,"reason")
-if(B.c.J(A.c(l==null?"":l)).length!==0)B.b.D(j,A.a([B.c6,A.m('"'+A.c(m.h(n,"reason"))+'"',2,B.z,s,s,B.auy,s,s,s)],i))
+if(B.c.J(A.c(l==null?"":l)).length!==0)B.b.D(j,A.a([B.c6,A.m('"'+B.c.J(A.c(m.h(n,"reason")))+'"',s,s,s,s,B.auy,s,s,s)],i))
 o=A.a([o,B.bT,A.a6(A.N(j,B.q,s,B.d,B.f,0,B.m),1),B.ao],i)
 if(J.e(m.h(n,"can_act"),!1)||J.e(m.h(n,"can_act"),0))o.push(B.rw)
 else B.b.D(o,A.a([A.Y(A.bAQ(B.OF,new A.aoR(this),A.rY(s,s,s,s,s,s,s,s,s,B.L,s,s,s,s,new A.bW(A.A(9),B.v),B.x_,s,s,s,s)),38,s),B.K,A.Y(A.nJ(B.aAz,new A.aoS(this),A.nK(B.aC,s,s,B.k,s,s,new A.bW(A.A(9),B.v),s,s)),38,s)],i))
