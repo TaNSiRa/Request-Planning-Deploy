@@ -460,9 +460,15 @@
         fitToPage: flag(fit, 'fitToPage'),
         fitWidth: count('fitToWidth'),
         fitHeight: count('fitToHeight'),
-        margins: { left: margin('left', 0.7), right: margin('right', 0.7), top: margin('top', 0.75), bottom: margin('bottom', 0.75) },
+        margins: {
+          left: margin('left', 0.7), right: margin('right', 0.7), top: margin('top', 0.75), bottom: margin('bottom', 0.75),
+          header: margin('header', 0.3), footer: margin('footer', 0.3)
+        },
         centered: flag(options, 'horizontalCentered'),
-        gridlines: flag(options, 'gridLines')
+        gridlines: flag(options, 'gridLines'),
+        // Page header / footer text, Excel's &-coded strings (see headerFooterRuns).
+        header: (child(child(root, 'headerFooter'), 'oddHeader') || {}).textContent || '',
+        footer: (child(child(root, 'headerFooter'), 'oddFooter') || {}).textContent || ''
       };
       var drawingNode = child(root, 'drawing');
       var rid = drawingNode && (drawingNode.getAttribute('r:id') || drawingNode.getAttributeNS(NS_R, 'id'));
@@ -513,6 +519,9 @@
               if (!info || !info.path) return Promise.resolve(null);
               return readSheet(zip, info.path).then(function (sheet) {
                 if (!sheet) return null;
+                // The header / footer's &K theme colours and &A sheet name.
+                sheet.page.theme = theme;
+                sheet.page.sheetName = name;
                 var drawing = sheet.drawingPath
                   ? readDrawing(zip, sheet.drawingPath).catch(function (err) {
                     console.warn('drawings skipped', err);
@@ -870,14 +879,155 @@
   // Paper sizes in mm by Excel's paperSize code; anything unknown prints on A4.
   var PAPER = { 1: [215.9, 279.4], 5: [215.9, 355.6], 8: [297, 420], 9: [210, 297], 11: [148, 210] };
   var PX_PER_MM = 96 / 25.4;
+  // Printers can't ink the outermost few mm of the paper, so a margin below
+  // this (the off-site form's are all 0) is raised to it: otherwise the
+  // printer just cuts off the form's edges. Inches, like Excel's margins.
+  var SAFE_MARGIN = 0.3;
+  // Gap between a header / footer and the sheet, inches.
+  var HF_GAP = 0.08;
+
+  // Excel's header / footer text ("&L…&C…&R…" with &-codes for fonts, sizes,
+  // colours and fields) -> { L, C, R }: each section a list of runs
+  // { text | field, style }. Sections with nothing in them are left out;
+  // null when there is no text at all.
+  function headerFooterRuns(text, theme) {
+    if (!text) return null;
+    var out = { L: [], C: [], R: [] };
+    var sec = 'C';
+    var style;
+    function reset() { style = { bold: false, italic: false, underline: false, strike: false, size: null, font: null, color: null }; }
+    function copy() { return { bold: style.bold, italic: style.italic, underline: style.underline, strike: style.strike, size: style.size, font: style.font, color: style.color }; }
+    var buf = '';
+    function flush() {
+      if (buf) out[sec].push({ text: buf, style: copy() });
+      buf = '';
+    }
+    reset();
+    for (var i = 0; i < text.length; i++) {
+      var ch = text[i];
+      if (ch !== '&') { buf += ch; continue; }
+      var n = text[++i];
+      if (n == null) break;
+      if (n === '&') { buf += '&'; continue; }
+      flush();
+      if (n === 'L' || n === 'C' || n === 'R') { sec = n; reset(); continue; }
+      if (n === '"') {
+        var close = text.indexOf('"', i + 1);
+        if (close < 0) break;
+        var spec = text.slice(i + 1, close).split(',');
+        if (spec[0] && spec[0] !== '-') style.font = spec[0];
+        var kind = (spec[1] || '').toLowerCase();
+        if (kind) {
+          style.bold = kind.indexOf('bold') >= 0;
+          style.italic = kind.indexOf('italic') >= 0 || kind.indexOf('oblique') >= 0;
+        }
+        i = close;
+        continue;
+      }
+      if (/[0-9]/.test(n)) {
+        var digits = text.slice(i).match(/^[0-9]{1,3}/)[0];
+        style.size = Number(digits);
+        i += digits.length - 1;
+        continue;
+      }
+      if (n === 'K') {
+        var code = text.slice(i + 1, i + 7);
+        if (/^[0-9A-Fa-f]{6}$/.test(code)) style.color = '#' + code;
+        else if (/^[0-9]{2}[+-][0-9]{3}$/.test(code)) {
+          var hex = (theme || DEFAULT_THEME)[THEME_ORDER[Number(code.slice(0, 2))]];
+          var tint = Number(code.slice(2)) / 100;
+          if (hex) style.color = '#' + (tint ? applyTint(hex, tint) : hex);
+        }
+        i += 6;
+        continue;
+      }
+      if (n === 'B') style.bold = !style.bold;
+      else if (n === 'I') style.italic = !style.italic;
+      else if (n === 'U' || n === 'E') style.underline = !style.underline;
+      else if (n === 'S') style.strike = !style.strike;
+      else if ('PNDTA'.indexOf(n) >= 0) out[sec].push({ field: n, style: copy() });
+      // &F, &Z (file name, path), &G (picture), &X / &Y (super / subscript)
+      // and anything unknown draw nothing.
+    }
+    flush();
+    var any = false;
+    ['L', 'C', 'R'].forEach(function (k) { if (out[k].length) any = true; else delete out[k]; });
+    return any ? out : null;
+  }
+
+  // One section's runs with fields filled in, trimmed of the blank lines
+  // around the text (the off-site footer pads its line with empty ones).
+  function sectionText(runs, ctx) {
+    var parts = runs.map(function (run) {
+      var t = run.text;
+      if (run.field === 'P') t = String(ctx.page);
+      else if (run.field === 'N') t = String(ctx.pages);
+      else if (run.field === 'D') t = ctx.now.toLocaleDateString();
+      else if (run.field === 'T') t = ctx.now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+      else if (run.field === 'A') t = ctx.sheetName || '';
+      return { text: t || '', style: run.style };
+    });
+    var all = parts.map(function (p) { return p.text; }).join('').replace(/\r/g, '');
+    var head = (all.match(/^(?:[ \t]*\n)+/) || [''])[0].length;
+    var tail = (all.match(/(?:\n[ \t]*)+$/) || [''])[0].length;
+    var from = head;
+    var to = all.length - tail;
+    var at = 0;
+    var kept = [];
+    parts.forEach(function (p) {
+      var t = p.text.replace(/\r/g, '');
+      var s = Math.max(from, at);
+      var e = Math.min(to, at + t.length);
+      if (e > s) kept.push({ text: t.slice(s - at, e - at), style: p.style });
+      at += t.length;
+    });
+    var text = kept.map(function (p) { return p.text; }).join('');
+    return { parts: kept, lines: text ? text.split('\n').length : 0, maxSize: kept.reduce(function (mx, p) { return Math.max(mx, p.style.size || 11); }, 0) };
+  }
+
+  // Tallest section of a header / footer in CSS px at [zoom].
+  function headerFooterHeight(runs, zoom, ctx) {
+    if (!runs) return 0;
+    var h = 0;
+    Object.keys(runs).forEach(function (k) {
+      var s = sectionText(runs[k], ctx);
+      h = Math.max(h, s.lines * s.maxSize * 96 / 72 * 1.2 * zoom);
+    });
+    return Math.ceil(h);
+  }
+
+  // A header / footer laid across the page: left, centre and right sections.
+  function headerFooterNode(runs, zoom, ctx, cls) {
+    var box = P.el('div', 'print-hf ' + cls);
+    Object.keys(runs).forEach(function (k) {
+      var s = sectionText(runs[k], ctx);
+      if (!s.lines) return;
+      var sec = P.el('div', 'print-hf-' + k);
+      s.parts.forEach(function (p) {
+        var span = P.el('span', null, p.text);
+        var st = p.style;
+        span.style.fontFamily = (st.font ? '"' + st.font + '", ' : '') + 'Calibri, sans-serif';
+        span.style.fontSize = (st.size || 11) * zoom + 'pt';
+        if (st.bold) span.style.fontWeight = 'bold';
+        if (st.italic) span.style.fontStyle = 'italic';
+        var deco = (st.underline ? 'underline ' : '') + (st.strike ? 'line-through' : '');
+        if (deco) span.style.textDecoration = deco;
+        if (st.color) span.style.color = st.color;
+        sec.appendChild(span);
+      });
+      box.appendChild(sec);
+    });
+    return box;
+  }
 
   // The drawn sheet cut into printed pages the way Excel would: only the print
   // area, a new page at every manual page break (an OT form per page), more
   // breaks wherever a page fills up, scaled to fit the paper width, no row or
-  // column headers, and gridlines only when the file asks for them.
+  // column headers, gridlines only when the file asks for them, and the page
+  // header / footer (the off-site form's "Form-Rev.04" line).
   // Returns { node, pageCss } — the pages, and the @page rule they are sized for.
   function printView(print) {
-    var page = print.page || { breaks: [], paper: 9, landscape: false, scale: 100, fitToPage: false, fitWidth: 1, fitHeight: 1, margins: { left: 0.7, right: 0.7, top: 0.75, bottom: 0.75 } };
+    var page = print.page || { breaks: [], paper: 9, landscape: false, scale: 100, fitToPage: false, fitWidth: 1, fitHeight: 1, margins: { left: 0.7, right: 0.7, top: 0.75, bottom: 0.75, header: 0.3, footer: 0.3 } };
     var area = print.area;
     var colLeft = print.colLeft;
     var rowTop = print.rowTop;
@@ -885,22 +1035,85 @@
     var paperW = page.landscape ? paper[1] : paper[0];
     var paperH = page.landscape ? paper[0] : paper[1];
     var m = page.margins;
-    // Room on the paper, in CSS px; a couple of px spare so rounding never
-    // pushes a page's last row onto a page of its own.
-    var roomW = paperW * PX_PER_MM - (m.left + m.right) * 96 - 2;
-    var roomH = paperH * PX_PER_MM - (m.top + m.bottom) * 96 - 2;
-
-    var x0 = colLeft[area.c0];
-    var areaW = colLeft[area.c1 + 1] - x0;
-    var areaH = rowTop[area.r1 + 1] - rowTop[area.r0];
-    var zoom = page.fitToPage ? 1 : page.scale / 100;
-    if (page.fitToPage && page.fitWidth > 0) zoom = Math.min(zoom, roomW * page.fitWidth / areaW);
-    if (page.fitToPage && page.fitHeight > 0) zoom = Math.min(zoom, roomH * page.fitHeight / areaH);
-    // Columns are never split across pages here: a sheet wider than the paper
-    // is shrunk to fit it instead.
-    zoom = Math.max(0.1, Math.min(zoom, roomW / areaW));
+    function safe(v) { return Math.max(v == null ? 0 : v, SAFE_MARGIN); }
+    var ml = safe(m.left);
+    var mr = safe(m.right);
+    var mt = safe(m.top);
+    var mb = safe(m.bottom);
+    var header = headerFooterRuns(page.header, page.theme);
+    var footer = headerFooterRuns(page.footer, page.theme);
+    var hfCtx = { page: 1, pages: 1, now: new Date(), sheetName: page.sheetName };
+    // The header sits [header] in from the top edge and the footer [footer]
+    // up from the bottom (both at least the safe margin); the sheet keeps
+    // clear of them. The paper box below starts at whichever comes first.
+    var hdrAt = safe(m.header);
+    var ftrAt = safe(m.footer);
+    var paperTop = header ? Math.min(hdrAt, mt) : mt;
+    var paperBottom = footer ? Math.min(ftrAt, mb) : mb;
+    // Page box, in CSS px; a couple of px spare so rounding never pushes a
+    // page onto a page of its own.
+    var boxW = paperW * PX_PER_MM - (ml + mr) * 96 - 2;
+    var boxH = paperH * PX_PER_MM - (paperTop + paperBottom) * 96 - 2;
+    function bodyBox(zoomGuess) {
+      var hH = headerFooterHeight(header, zoomGuess, hfCtx);
+      var fH = headerFooterHeight(footer, zoomGuess, hfCtx);
+      var top = Math.max(mt, header ? hdrAt + (hH / 96) + HF_GAP : 0) - paperTop;
+      var bottom = Math.max(mb, footer ? ftrAt + (fH / 96) + HF_GAP : 0) - paperBottom;
+      return { top: top * 96, bottom: bottom * 96, height: boxH - (top + bottom) * 96 };
+    }
 
     var parts = Array.prototype.slice.call(print.grid.children);
+    var areaLeft = colLeft[area.c0];
+    var areaRight = colLeft[area.c1 + 1];
+    var areaTop = rowTop[area.r0];
+    var areaBottom = rowTop[area.r1 + 1];
+
+    // Pictures and text that start inside the print area but run on past its
+    // right edge: the off-site form's long red note line (Thai glyphs come
+    // out wider here than in Excel) and its approval-box picture. The printed
+    // width stretches to take them in rather than cut them off — on both
+    // sides when the page is centred, so the form stays in the middle.
+    function inkRight(part, left, width) {
+      if (!part.classList.contains('xl-text')) return left + width;
+      // Text boxes are planned wider than their text: measure the text.
+      var box = part.getBoundingClientRect();
+      if (!box.width || !width) return areaRight;
+      var range = document.createRange();
+      range.selectNodeContents(part);
+      var ink = range.getBoundingClientRect();
+      return ink.width ? left + (ink.right - box.left) * width / box.width : areaRight;
+    }
+    var reach = areaRight;
+    parts.forEach(function (part) {
+      var cls = part.classList;
+      if (!cls.contains('xl-pic') && !cls.contains('xl-shape') && !cls.contains('xl-text')) return;
+      var left = parseFloat(part.style.left) || 0;
+      var top = parseFloat(part.style.top) || 0;
+      var width = parseFloat(part.style.width) || 0;
+      var height = parseFloat(part.style.height) || 0;
+      if (left >= areaRight || left + width <= areaRight || top >= areaBottom || top + height <= areaTop) return;
+      reach = Math.max(reach, inkRight(part, left, width) + 2);
+    });
+    var spill = Math.min(reach - areaRight, (areaRight - areaLeft) * 0.15);
+    var x0 = areaLeft - (page.centered ? spill : 0);
+    var areaW = areaRight + spill - x0;
+    var areaH = areaBottom - areaTop;
+    var roomW = boxW;
+    function zoomFor(roomH) {
+      var z = page.fitToPage ? 1 : page.scale / 100;
+      if (page.fitToPage && page.fitWidth > 0) z = Math.min(z, roomW * page.fitWidth / areaW);
+      if (page.fitToPage && page.fitHeight > 0) z = Math.min(z, roomH * page.fitHeight / areaH);
+      // Columns are never split across pages here: a sheet wider than the
+      // paper is shrunk to fit it instead.
+      return Math.max(0.1, Math.min(z, roomW / areaW));
+    }
+    // The header / footer scale with the sheet (Excel's "scale with
+    // document"), and how much room they take sets the scale: size them at
+    // the scale they'd get with no room taken (never smaller than the final
+    // one), then fit the sheet into what is left.
+    var body = bodyBox(zoomFor(bodyBox(0).height));
+    var roomH = body.height;
+    var zoom = zoomFor(roomH);
 
     // What a page break must not cut through: pictures, text boxes and the
     // text of merged cells. A break that would (the off-site form's break
@@ -953,9 +1166,28 @@
     }
     pages.push([start, area.r1]);
     var root = P.el('div', 'print-root');
-    pages.forEach(function (range) {
+    pages.forEach(function (range, index) {
       var y0 = rowTop[range[0]];
       var y1 = rowTop[range[1] + 1];
+      // The paper inside the @page margins: header at its top, footer at its
+      // bottom, the sheet in between.
+      var paperBox = P.el('div', 'print-paper');
+      paperBox.style.width = boxW + 'px';
+      paperBox.style.height = boxH + 'px';
+      var ctx = { page: index + 1, pages: pages.length, now: hfCtx.now, sheetName: hfCtx.sheetName };
+      if (header) {
+        var h = headerFooterNode(header, zoom, ctx, 'print-header');
+        h.style.top = (hdrAt - paperTop) * 96 + 'px';
+        paperBox.appendChild(h);
+      }
+      if (footer) {
+        var f = headerFooterNode(footer, zoom, ctx, 'print-footer');
+        f.style.bottom = (ftrAt - paperBottom) * 96 + 'px';
+        paperBox.appendChild(f);
+      }
+      var bodyNode = P.el('div', 'print-body');
+      bodyNode.style.top = body.top + 'px';
+      paperBox.appendChild(bodyNode);
       var sheet = P.el('div', 'print-page');
       sheet.style.zoom = zoom;
       if (page.centered) sheet.style.margin = '0 auto';
@@ -968,16 +1200,21 @@
       // the whole sheet would make a 31-page month very heavy to print.
       parts.forEach(function (part) {
         if (!page.gridlines && part.classList.contains('xl-gl')) return;
+        // Nothing from the columns beside the print area shows in the room
+        // made for the spill.
+        var left = parseFloat(part.style.left) || 0;
+        if (left >= areaRight || left + (parseFloat(part.style.width) || part.offsetWidth || 0) <= areaLeft) return;
         var top = parseFloat(part.style.top) || 0;
         var bottom = top + (parseFloat(part.style.height) || part.offsetHeight || 0);
         if (bottom > y0 && top < y1) grid.appendChild(part.cloneNode(true));
       });
       sheet.appendChild(grid);
-      root.appendChild(sheet);
+      bodyNode.appendChild(sheet);
+      root.appendChild(paperBox);
     });
 
     var css = '@page { size: ' + paperW + 'mm ' + paperH + 'mm; margin: ' +
-      m.top + 'in ' + m.right + 'in ' + m.bottom + 'in ' + m.left + 'in; }';
+      paperTop + 'in ' + mr + 'in ' + paperBottom + 'in ' + ml + 'in; }';
     return { node: root, pageCss: css };
   }
 

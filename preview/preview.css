@@ -288,9 +288,18 @@ body.sheet .status-detail { color: #64748b; }
   .print-pdf-page { display: block; break-after: page; }
   .print-pdf-page:last-child { break-after: auto; }
 
-  .print-page { position: relative; overflow: hidden; break-after: page; }
-  .print-page:last-child { break-after: auto; }
+  .print-paper { position: relative; overflow: hidden; break-after: page; }
+  .print-paper:last-child { break-after: auto; }
+  .print-body { position: absolute; left: 0; right: 0; }
+  .print-page { position: relative; overflow: hidden; }
   .print-page .xl-sheet { position: absolute; }
+  .print-hf { position: absolute; left: 0; right: 0; line-height: 1.2; color: #000; }
+  .print-hf > div { position: absolute; left: 0; right: 0; white-space: pre; }
+  .print-header > div { top: 0; }
+  .print-footer > div { bottom: 0; }
+  .print-hf-L { text-align: left; }
+  .print-hf-C { text-align: center; }
+  .print-hf-R { text-align: right; }
 
   body.doc #app, body.print-screen #app { position: static; display: block; }
   body.doc .scroller, body.print-screen .scroller { overflow: visible; }
